@@ -1,28 +1,46 @@
-# Hi, I'm Bhaskar Agarwal
+# Attendance System
 
-I'm currently pursuing a **B.Tech in Artificial Intelligence and Machine Learning at SIT Pune**.
+A simple webcam attendance prototype. It compares faces in the `Students`
+folder with faces seen by the camera and writes a dated CSV file in `Logs`.
 
-### About Me
+## Setup
 
-* I'm comfortable with **Python** and enjoy using it to build and experiment with different projects.
-* I have worked with **HTML and CSS** and am currently learning **C++**.
-* I plan to explore **JavaScript** more deeply in the near future.
-* I enjoy **coding, researching, and understanding how things work behind the scenes**.
-* Outside of academics and coding, I enjoy **playing sports and gaming**, and I like maintaining a balance between technical interests and other activities.
+From Command Prompt in this folder:
 
-I'm always interested in learning something new, experimenting with ideas, and understanding the reasoning behind how things work.
+```cmd
+python -m pip install -r requirements.txt
+```
 
-## Limitations
+Put one clear face photo per person in `Students`. Use the person's name as
+the filename, such as `Student Name.jpg`. Photos and attendance logs stay on
+your computer and are not included in the GitHub repository.
 
-While developing this project, I encountered a few limitations with the current approach:
+## Run
 
-* The `face_recognition` library depends on `dlib`, which can make installation and setup difficult on some systems.
-* Face recognition can become computationally demanding as the number of students increases.
-* Recognition accuracy can be affected by factors such as lighting, camera quality, and face angle.
-* The current attendance data is stored in a simple CSV file rather than a dedicated database.
+```cmd
+python Attendance.py
+```
 
-## Future Improvements
+Press **Q** in the camera window to quit. Run the command from this project
+folder because the script uses relative `Students` and `Logs` paths.
 
-I am currently researching newer face-recognition approaches, including **InsightFace**, to understand whether they can help address some of the limitations of the current implementation.
+This is a prototype, not a secure identity or attendance system. Obtain
+consent before storing or using anyone's face photo.
 
-My goal is to first understand the underlying technology and then evaluate whether replacing the current approach would provide meaningful improvements in performance, compatibility, and recognition accuracy.
+## About the author
+
+I'm Bhaskar Agarwal, pursuing a B.Tech in Artificial Intelligence and
+Machine Learning at SIT Pune. I enjoy building projects with Python and
+learning how the underlying technology works. I have also worked with HTML
+and CSS, am learning C++, and plan to explore JavaScript. Outside academics,
+I enjoy sports and gaming.
+
+## Limitations and future work
+
+- `face_recognition` depends on `dlib`, which can make installation difficult.
+- Recognition uses more computing power as the number of students grows.
+- Lighting, camera quality, and face angle can affect accuracy.
+- Attendance is saved in CSV files rather than a database.
+
+The updated attendance project explores InsightFace as another approach.
+
