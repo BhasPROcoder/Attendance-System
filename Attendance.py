@@ -1,287 +1,178 @@
-import cv2
 import face_recognition
-import numpy as np
+import cv2
 import os
-import csv
+import pandas as pd
 from datetime import datetime
 
-
-# -----------------------------
-# Configuration
-# -----------------------------
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STUDENTS_DIR = os.path.join(BASE_DIR, "Students")
-LOGS_DIR = os.path.join(BASE_DIR, "Logs")
-ATTENDANCE_FILE = os.path.join(LOGS_DIR, "attendance.csv")
-
-FRAME_SCALE = 0.25
-
-
-# -----------------------------
-# Load known student faces
-# -----------------------------
-
+# Load known faces
+students_dir = "Students"
 known_face_encodings = []
 known_face_names = []
 
-for filename in os.listdir(STUDENTS_DIR):
+if not os.path.exists(students_dir):
+    print("[ERROR] Students folder not found.")
+    exit()
 
+for filename in os.listdir(students_dir):
     if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+        path = os.path.join(students_dir, filename)
 
-        image_path = os.path.join(STUDENTS_DIR, filename)
+        try:
+            image = face_recognition.load_image_file(path)
+            encodings = face_recognition.face_encodings(image)
 
-        image = face_recognition.load_image_file(image_path)
+            if encodings:
+                known_face_encodings.append(encodings[0])
+                known_face_names.append(os.path.splitext(filename)[0])
+            else:
+                print(f"[WARNING] No face found in {filename}.")
 
-        encodings = face_recognition.face_encodings(image)
+        except Exception as e:
+            print(f"[WARNING] Could not load {filename}: {e}")
 
-        if len(encodings) == 0:
-            print(f"No face found in {filename}. Skipping...")
-            continue
+if not known_face_encodings:
+    print("[ERROR] No valid student faces found.")
+    exit()
 
-        if len(encodings) > 1:
-            print(f"Multiple faces found in {filename}. Skipping...")
-            continue
+# Set up today's attendance file
+today = datetime.now().strftime("%d-%m-%Y")
+log_dir = "Logs"
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"attendance_{today}.csv")
 
-        known_face_encodings.append(encodings[0])
+if os.path.exists(log_file):
+    try:
+        attendance_df = pd.read_csv(log_file)
+    except Exception:
+        attendance_df = pd.DataFrame(columns=["Name", "Time"])
+else:
+    attendance_df = pd.DataFrame(columns=["Name", "Time"])
 
-        # Use the filename as the student's name
-        name = os.path.splitext(filename)[0]
-        name = name.replace("_", " ")
+marked_today = set(attendance_df["Name"].astype(str))
 
-        known_face_names.append(name)
-
-
-print(f"Loaded {len(known_face_names)} students.")
-
-
-# -----------------------------
-# Create Logs folder
-# -----------------------------
-
-os.makedirs(LOGS_DIR, exist_ok=True)
-
-
-# -----------------------------
-# Create attendance file
-# -----------------------------
-
-if not os.path.exists(ATTENDANCE_FILE):
-
-    with open(ATTENDANCE_FILE, "w", newline="") as file:
-
-        writer = csv.writer(file)
-
-        writer.writerow([
-            "Name",
-            "Date",
-            "Time"
-        ])
-
-
-# -----------------------------
-# Load today's attendance
-# -----------------------------
-
-marked_today = set()
-
-today = datetime.now().strftime("%Y-%m-%d")
-
-with open(ATTENDANCE_FILE, "r", newline="") as file:
-
-    reader = csv.reader(file)
-    next(reader, None)
-
-    for row in reader:
-
-        if len(row) >= 2 and row[1] == today:
-            marked_today.add(row[0])
-
-
-# -----------------------------
-# Function to mark attendance
-# -----------------------------
-
-def mark_attendance(name):
-
-    # Don't mark the same student twice
-    if name in marked_today:
-        return
-
-    current_time = datetime.now().strftime("%H:%M:%S")
-
-    with open(ATTENDANCE_FILE, "a", newline="") as file:
-
-        writer = csv.writer(file)
-
-        writer.writerow([
-            name,
-            today,
-            current_time
-        ])
-
-    marked_today.add(name)
-
-    print(f"Attendance marked: {name}")
-
-
-# -----------------------------
 # Start webcam
-# -----------------------------
-
 video_capture = cv2.VideoCapture(0)
 
+if not video_capture.isOpened():
+    print("[ERROR] Could not open webcam.")
+    exit()
 
-while True:
+print("[INFO] Camera started. Press 'q' to quit.")
 
-    # Grab a frame from the webcam
-    ret, frame = video_capture.read()
+frame_count = 0
+face_locations = []
+face_names = []
 
-    if not ret:
-        print("Failed to access webcam.")
-        break
+try:
+    while True:
+        ret, frame = video_capture.read()
 
+        if not ret:
+            print("[ERROR] Failed to read from webcam.")
+            break
 
-    # -----------------------------
-    # Resize frame for faster processing
-    # -----------------------------
+        frame_count += 1
 
-    small_frame = cv2.resize(
-        frame,
-        (0, 0),
-        fx=FRAME_SCALE,
-        fy=FRAME_SCALE
-    )
+        # Run face recognition every 2nd frame
+        if frame_count % 2 == 0:
+            # Resize frame to 50% for CPU processing
+            small_frame = cv2.resize(
+                frame,
+                (0, 0),
+                fx=0.5,
+                fy=0.5
+            )
 
+            # Convert BGR to RGB
+            rgb_small_frame = cv2.cvtColor(
+                small_frame,
+                cv2.COLOR_BGR2RGB
+            )
 
-    # Convert BGR to RGB
-    rgb_small_frame = cv2.cvtColor(
-        small_frame,
-        cv2.COLOR_BGR2RGB
-    )
+            # CPU-based HOG face detection
+            face_locations = face_recognition.face_locations(
+                rgb_small_frame,
+                model="hog"
+            )
 
+            face_encodings = face_recognition.face_encodings(
+                rgb_small_frame,
+                face_locations
+            )
 
-    # -----------------------------
-    # Detect faces
-    # -----------------------------
+            face_names = []
 
-    face_locations = face_recognition.face_locations(
-        rgb_small_frame
-    )
+            for face_encoding in face_encodings:
+                matches = face_recognition.compare_faces(
+                    known_face_encodings,
+                    face_encoding
+                )
 
-    face_encodings = face_recognition.face_encodings(
-        rgb_small_frame,
-        face_locations
-    )
+                distances = face_recognition.face_distance(
+                    known_face_encodings,
+                    face_encoding
+                )
 
+                best_match = distances.argmin()
 
-    face_names = []
+                if matches[best_match]:
+                    name = known_face_names[best_match]
+                else:
+                    name = "Unknown"
 
+                face_names.append(name)
 
-    # -----------------------------
-    # Compare detected faces
-    # -----------------------------
+                # Mark attendance
+                if name != "Unknown" and name not in marked_today:
+                    now = datetime.now()
+                    time = now.strftime("%H:%M:%S")
 
-    for face_encoding in face_encodings:
+                    attendance_df.loc[len(attendance_df)] = [
+                        name,
+                        time
+                    ]
 
-        name = "Unknown"
+                    marked_today.add(name)
+                    print(f"[Logged] {name} at {time}")
 
-        # Compare the detected face with known faces
-        matches = face_recognition.compare_faces(
-            known_face_encodings,
-            face_encoding
-        )
+        # Draw results on full-size frame
+        for (top, right, bottom, left), name in zip(
+            face_locations,
+            face_names
+        ):
+            # Convert coordinates back from 50% size
+            top *= 2
+            right *= 2
+            bottom *= 2
+            left *= 2
 
-        # Calculate the distance between faces
-        face_distances = face_recognition.face_distance(
-            known_face_encodings,
-            face_encoding
-        )
+            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
 
+            cv2.rectangle(
+                frame,
+                (left, top),
+                (right, bottom),
+                color,
+                2
+            )
 
-        if len(face_distances) > 0:
+            cv2.putText(
+                frame,
+                name,
+                (left, top - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.9,
+                color,
+                2
+            )
 
-            # Find the closest known face
-            best_match_index = np.argmin(face_distances)
+        cv2.imshow("Attendance System", frame)
 
-            if matches[best_match_index]:
-                name = known_face_names[best_match_index]
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
-
-        face_names.append(name)
-
-
-    # -----------------------------
-    # Display results
-    # -----------------------------
-
-    for (top, right, bottom, left), name in zip(
-        face_locations,
-        face_names
-    ):
-
-        # Convert coordinates back to original frame size
-        top = int(top / FRAME_SCALE)
-        right = int(right / FRAME_SCALE)
-        bottom = int(bottom / FRAME_SCALE)
-        left = int(left / FRAME_SCALE)
-
-
-        # Draw rectangle around face
-        cv2.rectangle(
-            frame,
-            (left, top),
-            (right, bottom),
-            (0, 0, 255),
-            2
-        )
-
-
-        # Draw name background
-        cv2.rectangle(
-            frame,
-            (left, bottom - 35),
-            (right, bottom),
-            (0, 0, 255),
-            cv2.FILLED
-        )
-
-
-        # Display name
-        cv2.putText(
-            frame,
-            name,
-            (left + 6, bottom - 6),
-            cv2.FONT_HERSHEY_DUPLEX,
-            0.8,
-            (255, 255, 255),
-            1
-        )
-
-
-        # Mark attendance for recognized students
-        if name != "Unknown":
-            mark_attendance(name)
-
-
-    # -----------------------------
-    # Display webcam
-    # -----------------------------
-
-    cv2.imshow(
-        "Face Recognition Attendance",
-        frame
-    )
-
-
-    # Press Q to quit
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
-
-
-# -----------------------------
-# Release resources
-# -----------------------------
-
-video_capture.release()
-cv2.destroyAllWindows()
+finally:
+    attendance_df.to_csv(log_file, index=False)
+    video_capture.release()
+    cv2.destroyAllWindows()
+    print(f"[INFO] Attendance saved to {log_file}")
