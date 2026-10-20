@@ -1,1 +1,3 @@
-Add student photos here. Name each photo using the first_last format.
+Place consenting students' face photos here, named after each person.
+These photos are local-only and ignored by Git.
+
